@@ -2,7 +2,9 @@ import os
 import uuid
 import json
 from flask import Flask, render_template, request
-from pytube import YouTube
+# pytube는 제거하고, yt_dlp와 tempfile을 사용합니다.
+import yt_dlp
+import tempfile
 from google.cloud import storage
 import vertexai
 from vertexai.generative_models import GenerativeModel, Part, GenerationConfig
@@ -26,8 +28,8 @@ GCS_BUCKET_NAME = os.environ.get("GCS_BUCKET_NAME")
 if not PROJECT_ID or not GCS_BUCKET_NAME:
     logging.error("필수 환경변수가 설정되지 않았습니다. PROJECT_ID와 GCS_BUCKET_NAME을 확인하세요.")
 
-# Gemini 모델 설정 (영상 분석에는 1.5 모델을 권장합니다)
-GEMINI_MODEL_ID = "gemini-1.5-flash-002"  # 최신 버전으로 업데이트
+# Gemini 모델 설정
+GEMINI_MODEL_ID = "gemini-2.5-pro"  # 최신 버전으로 업데이트
 
 # GCP 클라이언트 초기화
 try:
@@ -109,26 +111,37 @@ def analyze():
     gcs_uri = None
 
     try:
-        # --- 2. 유튜브 영상 다운로드 (서버 임시 폴더로) ---
+        # --- 2. 유튜브 영상 다운로드 (pytube -> yt-dlp로 교체됨) ---
         logging.info(f"Analyzing URL: {youtube_url}")
-        yt = YouTube(youtube_url)
-        
-        # 다양한 스트림 옵션 시도 (개선)
-        stream = yt.streams.filter(progressive=True, file_extension='mp4', res="360p").first()
-        if not stream:
-            stream = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').first()
-        if not stream:
-            # 프로그레시브가 아닌 스트림도 시도
-            stream = yt.streams.filter(file_extension='mp4').first()
 
-        if not stream:
-            raise Exception("다운로드 가능한 MP4 스트림을 찾지 못했습니다.")
-
+        # Windows/Mac/Linux 호환을 위해 OS의 임시 폴더를 사용합니다.
+        # (pytube의 /tmp 경로 버그 수정)
+        temp_dir = tempfile.gettempdir()
         unique_filename = f"{uuid.uuid4()}.mp4"
-        local_video_path = os.path.join("/tmp", unique_filename)
-        logging.info(f"Downloading video to: {local_video_path}")
-        stream.download(output_path="/tmp", filename=unique_filename)
+        local_video_path = os.path.join(temp_dir, unique_filename)
+
+        # yt-dlp 옵션 설정
+        ydl_opts = {
+            'format': 'bestvideo[ext=mp4][progressive=True][height=720]/best[ext=mp4][progressive=True]/best[ext=mp4]',
+            'outtmpl': local_video_path,  # 파일 저장 경로를 정확히 지정
+            'quiet': False, # 다운로드 로그를 보기 위해 False로 설정
+        }
+
+        logging.info(f"Downloading video with yt-dlp to: {local_video_path}")
+        try:
+            # yt-dlp 실행
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([youtube_url])
+        except Exception as e:
+            logging.error(f"yt-dlp download failed: {e}")
+            raise Exception(f"yt-dlp 다운로드 실패: {e}")
+
+        # 파일이 실제로 생성되었는지 확인
+        if not os.path.exists(local_video_path):
+            raise Exception("yt-dlp: 다운로드에 실패했습니다 (파일이 생성되지 않음).")
+        
         logging.info("Download complete.")
+
 
         # --- 3. GCS에 업로드 ---
         gcs_blob_name = f"video-uploads/{unique_filename}"
