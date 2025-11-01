@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>주식 영상 분석기 (Gemini)</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 2rem; background-color: #f4f7f6; }
+        .container { max-width: 800px; margin: 0 auto; background: #fff; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        h1 { color: #2c3e50; }
+        form { display: flex; gap: 10px; margin-bottom: 2rem; }
+        input[type="text"] { flex-grow: 1; padding: 12px; font-size: 1rem; border: 1px solid #ddd; border-radius: 4px; }
+        button { padding: 12px 20px; font-size: 1rem; background-color: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background-color: #2980b9; }
+        .loading { display: none; text-align: center; padding: 1rem; font-size: 1.2rem; color: #555; }
+        .results, .error { margin-top: 2rem; padding: 1.5rem; border-radius: 4px; }
+        .error { background-color: #ffebee; border: 1px solid #e57373; color: #c62828; }
+        .results { background-color: #e8f5e9; border: 1px solid #81c784; }
+        .results h2 { margin-top: 0; }
+        .results pre { background: #fafafa; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+        .results-item { margin-bottom: 1rem; }
+        .results-item strong { display: inline-block; width: 150px; color: #34495e; }
+        .decision { font-size: 1.5rem; font-weight: bold; }
+        .decision.buy { color: #e74c3c; }
+        .decision.sell { color: #3498db; }
+        .decision.wait { color: #f39c12; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Gemini 주식 영상 분석기</h1>
+        <p>전재산을 건 전문가의 시각으로 유튜브 영상을 분석합니다.</p>
+
+        <form id="analyze-form" action="/analyze" method="POST">
+            <input type="text" id="youtube_url" name="youtube_url" 
+                   placeholder="분석할 YouTube URL을 입력하세요..." 
+                   value="{{ youtube_url | default('', true) }}" required>
+            <button type="submit">분석 시작</button>
+        </form>
+
+        <div id="loading-indicator" class="loading">
+            <p>분석 중입니다... (영상 길이에 따라 최대 5~10분 소요)</p>
+            <p><strong>[주의] 절대 이 창을 닫거나 새로고침하지 마세요!</strong></p>
+        </div>
+
+        {% if error %}
+            <div class="error">
+                <strong>[오류 발생]</strong> {{ error }}
+            </div>
+        {% endif %}
+
+        {% if results %}
+            <div class="results">
+                <h2>"{{ results.stock_name }}" 분석 결과</h2>
+                <div class="results-item">
+                    <strong>최종 결정:</strong> 
+                    <span class="decision 
+                        {% if results.final_decision == '매수' %}buy
+                        {% elif results.final_decision == '매도' %}sell
+                        {% else %}wait{% endif %}">
+                        {{ results.final_decision }}
+                    </span>
+                </div>
+                <div class="results-item">
+                    <strong>결정 사유:</strong> {{ results.decision_reason }}
+                </div>
+                <hr>
+                <div class="results-item">
+                    <strong>핵심 투자 논리:</strong> {{ results.investment_thesis }}
+                </div>
+                <div class="results-item">
+                    <strong>언급된 리스크:</strong> {{ results.mentioned_risk }}
+                </div>
+                <div class="results-item">
+                    <strong>신뢰도 점수:</strong> {{ results.credibility_score }} / 10
+                </div>
+
+                <h3>전체 JSON 응답:</h3>
+                <pre>{{ results | tojson(indent=2) }}</pre>
+            </div>
+        {% endif %}
+    </div>
+
+    <script>
+        document.getElementById('analyze-form').addEventListener('submit', function() {
+            // URL이 비어있지 않으면 로딩 인디케이터를 표시
+            const url = document.getElementById('youtube_url').value;
+            if (url) {
+                document.getElementById('loading-indicator').style.display = 'block';
+            }
+        });
+    </script>
+
+</body>
+</html>

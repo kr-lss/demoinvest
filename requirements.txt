@@ -1,0 +1,6 @@
+flask
+google-cloud-aiplatform
+google-cloud-storage
+pytube
+protobuf
+python-dotenv
